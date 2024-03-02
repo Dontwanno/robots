@@ -23,7 +23,7 @@ static PxPvd*					gPvd        = NULL;
 
 int loadRobot()
 {
-    std::string filepath = "./edo_robot/urdf.xml";
+    std::string filepath = "../robot_files/urdf.xml";
 
     //load urdf
 
@@ -130,20 +130,23 @@ int main(int, const char*const*)
 	initPhysics(true);
 
 	// check if output_file.bin exists
-	if (std::filesystem::exists("../PxMeshes/output_file.bin")) {
+	if (std::filesystem::exists("../PxBins/output_file.bin")) {
 		std::cout << "File exists, not creating new file." << std::endl;
 	} else {
 		std::cout << "File does not exist" << std::endl;
-		createConvex("../edo_robot/base_link.stl", gPhysics);
+		createConvex("../robot_files/base_link.stl", gPhysics);
 	}
 
-	createConvex("../edo_robot/base_link.stl", gPhysics);
-
+	PxDefaultMemoryInputData inStream = createMemoryInputData("../PxBins/output_file.bin");
 
 	PxConvexMesh* convex = gPhysics->createConvexMesh(inStream);
 	PX_ASSERT(convex);
 
 	std::cout << "Convex mesh created." << std::endl;
+
+	//create convex geometry
+	PxConvexMeshGeometry convexGeom(convex);
+
 
 	cleanupPhysics(false);
 	return 0;
