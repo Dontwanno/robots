@@ -8,6 +8,6 @@
 #include <PxPhysicsAPI.h>
 
 physx::PxDefaultMemoryInputData createMemoryInputData(const std::string& fileName);
-void createConvex(const std::string& fileName, physx::PxPhysics* gPhysics);
+void createConvex(const std::string& fileName, const std::string& outputFileName, physx::PxPhysics* gPhysics);
 
 #endif //COOKING_H

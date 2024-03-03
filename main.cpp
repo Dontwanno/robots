@@ -20,48 +20,86 @@ static PxPvd*					gPvd        = NULL;
 
 #define PVD_HOST "127.0.0.1"	//Set this to the IP address of the system running the PhysX Visual Debugger that you want to connect to.
 
+#define PRINT(x) std::cout << x << std::endl;
 
-int loadRobot()
+
+void loadRobot(std::vector<PxConvexMeshGeometry>& linkGeometrys, urdf::ModelInterfaceSharedPtr& robot)
 {
-    std::string filepath = "../robot_files/urdf.xml";
+    std::string urdf_filepath = "../robot_files/edo_sim/urdf.xml";
+	std::vector<std::string> mesh_filepaths;
 
-    //load urdf
+	// ... set up your robot model ...
+	parse_urdf(urdf_filepath, robot);
 
-    //load parts
+	std::vector<urdf::LinkSharedPtr> links;
 
-    //create decompositions
+	const auto root = robot->getRoot();
 
-    //
-    return 1;
-}
+    std::string delimiter = "package://";
 
-static PxReal stackZ = 10.0f;
+    robot->getLinks(links);
 
-static PxRigidDynamic* createDynamic(const PxTransform& t, const PxGeometry& geometry, const PxVec3& velocity=PxVec3(0))
-{
-	PxRigidDynamic* dynamic = PxCreateDynamic(*gPhysics, t, geometry, *gMaterial, 10.0f);
-	dynamic->setAngularDamping(0.5f);
-	dynamic->setLinearVelocity(velocity);
-	gScene->addActor(*dynamic);
-	return dynamic;
-}
-
-static void createStack(const PxTransform& t, PxU32 size, PxReal halfExtent)
-{
-	PxShape* shape = gPhysics->createShape(PxBoxGeometry(halfExtent, halfExtent, halfExtent), *gMaterial);
-	for(PxU32 i=0; i<size;i++)
+	// get mesh filepaths
+	for (auto link : links)
 	{
-		for(PxU32 j=0;j<size-i;j++)
+		auto mesh = std::dynamic_pointer_cast<urdf::Mesh>(link->visual->geometry);
+		if (mesh)
 		{
-			PxTransform localTm(PxVec3(PxReal(j*2) - PxReal(size-i), PxReal(i*2+1), 0) * halfExtent);
-			PxRigidDynamic* body = gPhysics->createRigidDynamic(t.transform(localTm));
-			body->attachShape(*shape);
-			PxRigidBodyExt::updateMassAndInertia(*body, 10.0f);
-			gScene->addActor(*body);
+			std::string filename = mesh->filename;
+			std::string token = filename.substr(delimiter.length(), filename.length() - 1);
+			mesh_filepaths.push_back(token);
 		}
 	}
-	shape->release();
+
+	// create convex meshes
+	for (int i = 0; i < mesh_filepaths.size(); i++)
+	{
+		// check if output_file.bin exists
+		PRINT("../robot_files/" + mesh_filepaths[i])
+		if (std::filesystem::exists("../PxMeshes/" + links[i]->name + "_convex.bin")) {
+			std::cout << "File exists, not creating new file." << std::endl;
+		} else {
+			std::cout << "File does not exist" << std::endl;
+			createConvex("../robot_files/" + mesh_filepaths[i], links[i]->name, gPhysics);
+		}
+
+		PRINT("../PxMeshes/" + links[i]->name + ".bin")
+		PxDefaultMemoryInputData inStream = createMemoryInputData("../PxMeshes/" + links[i]->name + "_convex.bin");
+
+		PRINT("Size is: " << inStream.getLength() << " bytes.");
+
+		PxConvexMesh* convex = gPhysics->createConvexMesh(inStream);
+		PX_ASSERT(convex);
+
+		std::cout << "Convex mesh created." << std::endl;
+
+		//create convex geometry
+		PxConvexMeshGeometry convexGeom(convex);
+		PRINT(convexGeom.isValid())
+		linkGeometrys.push_back(convexGeom);
+	}
 }
+
+void createArticulation(PxPhysics* gPhysics, PxMaterial* material, PxScene* gScene, std::vector<PxConvexMeshGeometry>& linkGeometrys)
+{
+	PxArticulationReducedCoordinate* articulation = gPhysics->createArticulationReducedCoordinate();
+
+	PRINT(linkGeometrys.size());
+
+	articulation->setArticulationFlag(PxArticulationFlag::eFIX_BASE, true);
+	articulation->setSolverIterationCounts(32);
+
+	PxTransform trans = PxTransform(PxVec3(0.0f, 0.0f, 0.0f));
+
+	PxArticulationLink* link = articulation->createLink(NULL, trans);
+	PxRigidActorExt::createExclusiveShape(*link, linkGeometrys[0], *material);
+	PxRigidBodyExt::updateMassAndInertia(*link, 1.0f);
+
+	gScene->addArticulation(*articulation);
+
+
+}
+
 
 void initPhysics(bool interactive)
 {
@@ -116,38 +154,25 @@ void cleanupPhysics(bool /*interactive*/)
 	printf("SnippetHelloWorld done.\n");
 }
 
-void keyPress(unsigned char key, const PxTransform& camera)
-{
-	switch(toupper(key))
-	{
-	case 'B':	createStack(PxTransform(PxVec3(0,0,stackZ-=10.0f)), 10, 2.0f);						break;
-	case ' ':	createDynamic(camera, PxSphereGeometry(3.0f), camera.rotate(PxVec3(0,0,-1))*200);	break;
-	}
-}
 
 int main(int, const char*const*)
 {
+	urdf::ModelInterfaceSharedPtr robot;
+	std::vector<PxConvexMeshGeometry> linkGeometrys;
+
+
 	initPhysics(true);
 
-	// check if output_file.bin exists
-	if (std::filesystem::exists("../PxBins/output_file.bin")) {
-		std::cout << "File exists, not creating new file." << std::endl;
-	} else {
-		std::cout << "File does not exist" << std::endl;
-		createConvex("../robot_files/base_link.stl", gPhysics);
-	}
+	loadRobot(linkGeometrys, robot);
 
-	PxDefaultMemoryInputData inStream = createMemoryInputData("../PxBins/output_file.bin");
+	// createArticulation(gPhysics, gMaterial, gScene, linkGeometrys);
 
-	PxConvexMesh* convex = gPhysics->createConvexMesh(inStream);
-	PX_ASSERT(convex);
-
-	std::cout << "Convex mesh created." << std::endl;
-
-	//create convex geometry
-	PxConvexMeshGeometry convexGeom(convex);
-
+	// while (true)
+	// {
+	// 	stepPhysics(true);
+	// }
 
 	cleanupPhysics(false);
+
 	return 0;
 }

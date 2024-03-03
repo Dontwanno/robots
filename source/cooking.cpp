@@ -1,4 +1,7 @@
-#include <ctype.h>
+#include <cctype>
+#include <stdio.h>
+#include <stdlib.h> // For aligned_alloc
+
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -15,30 +18,29 @@ using namespace physx;
 
 PxDefaultMemoryInputData createMemoryInputData(const std::string& fileName)
 {
-	std::ifstream file(fileName, std::ios::in | std::ios::binary);
+	// Open the file
+	std::ifstream file(fileName, std::ios::in | std::ios::binary | std::ios::ate);
 
-	if (!file.is_open()) {
-		std::cerr << "Error opening file!" << std::endl;
+	// Check if the file was opened
+	if (!file.is_open())
+	{
+		std::cout << "Error: Could not open file for reading." << std::endl;
 	}
 
-	file.seekg(0, std::ios::end);
-	size_t dataSize = file.tellg();
+	size_t fileSize = file.tellg();
+	std::vector<PxU8> buffer(fileSize);
+
+	//write filecontents to buffer
 	file.seekg(0, std::ios::beg);
-
-	std::vector<char> buffer(dataSize);
-
-	file.read(buffer.data(), dataSize);
+	file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
 	file.close();
 
-	PxU8* PxData = reinterpret_cast<PxU8*>(buffer.data());
-	// Create the mesh from a stream.
-	PxDefaultMemoryInputData inStream(PxData, dataSize);
-
+	PxDefaultMemoryInputData inStream(buffer.data(), buffer.size());
 	return inStream;
 }
 
 
-void createConvex(const std::string& fileName, PxPhysics* gPhysics)
+void createConvex(const std::string& fileName, const std::string& outputFileName, PxPhysics* gPhysics)
 {
 	bool directInsertion = false;
 
@@ -62,15 +64,21 @@ void createConvex(const std::string& fileName, PxPhysics* gPhysics)
 
 	aiMesh* mesh = scene->mMeshes[0];
 
-	// PxVec3* vertices = new PxVec3[mesh->mNumVertices];
+	PxVec3* vertices = new PxVec3[mesh->mNumVertices];
 	// PxU32* indices = new PxU32[mesh->mNumFaces * 3];
-	std::vector<PxVec3> vertices(mesh->mNumVertices);
+	// std::vector<PxVec3> vertices(mesh->mNumVertices);
 
+	// // Prepare vertices
+	// for(PxU32 i = 0; i < mesh->mNumVertices; i++)
+	// {
+	// 	aiVector3D vertex = mesh->mVertices[i];
+	// 	vertices.emplace_back(PxVec3(vertex.x, vertex.y, vertex.z));
+	// }
 	// Prepare vertices
 	for(PxU32 i = 0; i < mesh->mNumVertices; i++)
 	{
 		aiVector3D vertex = mesh->mVertices[i];
-		vertices.emplace_back(vertex.x, vertex.y, vertex.z);
+		vertices[i] = PxVec3(vertex.x, vertex.y, vertex.z);
 	}
 
 	// // Prepare indices
@@ -104,7 +112,7 @@ void createConvex(const std::string& fileName, PxPhysics* gPhysics)
 	// convexDesc.indices.stride			= sizeof(PxU32);
 	// convexDesc.indices.data				= indices;
 
-	convexDesc.points.data = vertices.data();
+	convexDesc.points.data = vertices;
 	convexDesc.points.count = mesh->mNumVertices;
 	convexDesc.points.stride = sizeof(PxVec3);
 	convexDesc.flags = PxConvexFlag::eCOMPUTE_CONVEX;
@@ -130,15 +138,15 @@ void createConvex(const std::string& fileName, PxPhysics* gPhysics)
 		meshSize = outStream.getSize();
 
 		// Get the data from the memory output stream
-		const uint8_t* data = outStream.getData();
+		PxU8* data = outStream.getData();
 		size_t dataSize = outStream.getSize();
 
 		// Open the output file
-		std::ofstream file("../PxBins/" + fileName + "_convex.bin", std::ios::out | std::ios::binary);
+		std::ofstream file("../PxMeshes/" + outputFileName + "_convex.bin", std::ios::out | std::ios::binary);
 
 		// Write to the file
 		if (file.is_open()) {
-			file.write(reinterpret_cast<const char*>(data), dataSize);
+			file.write(reinterpret_cast<char*>(data), dataSize);
 			file.close();
 		} else {
 			std::cout << "Error: Could not open file for writing." << std::endl;
@@ -165,7 +173,10 @@ void createConvex(const std::string& fileName, PxPhysics* gPhysics)
 		printf("\t Mesh size: %d \n", meshSize);
 	}
 
-	// delete []indices;
+	delete []vertices;
+
+	PxConvexMeshGeometry testgeom(convex);
+	std::cout << "is convex geom valid?? " << testgeom.isValid() << std::endl;
 
 	convex->release();
 }
