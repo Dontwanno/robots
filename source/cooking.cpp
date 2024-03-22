@@ -16,29 +16,6 @@
 
 using namespace physx;
 
-PxDefaultMemoryInputData createMemoryInputData(const std::string& fileName)
-{
-	// Open the file
-	std::ifstream file(fileName, std::ios::in | std::ios::binary | std::ios::ate);
-
-	// Check if the file was opened
-	if (!file.is_open())
-	{
-		std::cout << "Error: Could not open file for reading." << std::endl;
-	}
-
-	size_t fileSize = file.tellg();
-	std::vector<PxU8> buffer(fileSize);
-
-	//write filecontents to buffer
-	file.seekg(0, std::ios::beg);
-	file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-	file.close();
-
-	PxDefaultMemoryInputData inStream(buffer.data(), buffer.size());
-	return inStream;
-}
-
 
 void createConvex(const std::string& fileName, const std::string& outputFileName, PxPhysics* gPhysics)
 {
@@ -137,20 +114,10 @@ void createConvex(const std::string& fileName, const std::string& outputFileName
 		PX_ASSERT(res);
 		meshSize = outStream.getSize();
 
-		// Get the data from the memory output stream
-		PxU8* data = outStream.getData();
-		size_t dataSize = outStream.getSize();
-
 		// Open the output file
-		std::ofstream file("../PxMeshes/" + outputFileName + "_convex.bin", std::ios::out | std::ios::binary);
+		PxDefaultFileOutputStream file(("../PxMeshes/" + outputFileName + "_convex.bin").c_str());
 
-		// Write to the file
-		if (file.is_open()) {
-			file.write(reinterpret_cast<char*>(data), dataSize);
-			file.close();
-		} else {
-			std::cout << "Error: Could not open file for writing." << std::endl;
-		}
+		file.write(outStream.getData(), outStream.getSize());
 
 		// Create the mesh from a stream.
 		PxDefaultMemoryInputData inStream(outStream.getData(), outStream.getSize());
@@ -175,8 +142,8 @@ void createConvex(const std::string& fileName, const std::string& outputFileName
 
 	delete []vertices;
 
-	PxConvexMeshGeometry testgeom(convex);
-	std::cout << "is convex geom valid?? " << testgeom.isValid() << std::endl;
+	// PxConvexMeshGeometry testgeom(convex);
+	// std::cout << "is convex geom valid?? " << testgeom.isValid() << std::endl;
 
 	convex->release();
 }
